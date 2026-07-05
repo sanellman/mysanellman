@@ -47,6 +47,14 @@ const toInputDate = (d: Date) => {
   const p = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 };
+/* แปลงค่าจาก <input type="date"> เป็น Date (คงเวลาปัจจุบันไว้) — คืน null ถ้าค่าว่าง/เพี้ยน */
+const parseDateInput = (s: string, now: Date): Date | null => {
+  const [y, m, d] = s.split("-").map(Number);
+  if (!y || !m || !d) return null;
+  const year = y > 2400 ? y - 543 : y; // เผื่อพิมพ์ปีเป็น พ.ศ.
+  const dt = new Date(year, m - 1, d, now.getHours(), now.getMinutes(), now.getSeconds());
+  return isNaN(dt.getTime()) ? null : dt;
+};
 const timeLabel = (ts: number) =>
   new Intl.DateTimeFormat("th-TH", { hour: "2-digit", minute: "2-digit" }).format(new Date(ts));
 const weekdayShort = (ts: number) =>
@@ -57,7 +65,11 @@ function dayHeading(ts: number): string {
   const diff = Math.round((today - dayStart(new Date(ts))) / 86_400_000);
   if (diff === 0) return "วันนี้";
   if (diff === 1) return "เมื่อวาน";
-  return new Intl.DateTimeFormat("th-TH", { weekday: "long", day: "numeric", month: "short" }).format(new Date(ts));
+  const d = new Date(ts);
+  const sameYear = d.getFullYear() === new Date().getFullYear();
+  return new Intl.DateTimeFormat("th-TH", {
+    weekday: "long", day: "numeric", month: "short", ...(sameYear ? {} : { year: "numeric" }),
+  }).format(d);
 }
 
 function sanitize(o: unknown, fallbackId: number): DailyItem | null {
@@ -90,6 +102,7 @@ export default function DailyPage() {
   const [period, setPeriod] = useState<Period>("7d");
   const [budgets, setBudgets] = useState<Record<string, number>>({});
   const [editBudget, setEditBudget] = useState(false);
+  const [formError, setFormError] = useState("");
   const amountRef = useRef<HTMLInputElement>(null);
 
   /* load / save */
@@ -123,14 +136,18 @@ export default function DailyPage() {
   /* add */
   const addItem = () => {
     if (amount <= 0) {
+      setFormError("กรอกจำนวนเงินก่อน แล้วกด “เพิ่มรายการ” อีกครั้ง");
       amountRef.current?.focus();
       return;
     }
     const now = new Date();
-    const [y, m, d] = date.split("-").map(Number);
-    const ts = new Date(y, (m || 1) - 1, d || 1, now.getHours(), now.getMinutes(), now.getSeconds()).getTime();
+    const picked = parseDateInput(date, now);
+    // วันที่ว่าง/เพี้ยน/เป็นอนาคต → ใช้วันนี้แทน แล้วปรับช่องวันที่ให้ตรงกับที่บันทึกจริง
+    const when = picked && picked.getTime() <= now.getTime() ? picked : now;
+    if (when === now) setDate(toInputDate(now));
+    setFormError("");
     const id = items.reduce((mx, it) => Math.max(mx, it.id), 0) + 1;
-    setItems((p) => [...p, { id, amount, cat, note: note.trim(), ts }]);
+    setItems((p) => [...p, { id, amount, cat, note: note.trim(), ts: when.getTime() }]);
     // reset เฉพาะจำนวน/โน้ต — คงหมวดกับวันไว้ให้กรอกต่อได้เร็ว
     setAmount(0);
     setNote("");
@@ -257,12 +274,14 @@ export default function DailyPage() {
               <div className="flex items-center gap-2">
                 <span className="text-2xl text-slate-500">฿</span>
                 <NumInput
+                  ref={amountRef}
                   value={amount}
-                  onChange={setAmount}
+                  onChange={(v) => { setAmount(v); if (v > 0) setFormError(""); }}
                   placeholder="0"
                   className={`${field} flex-1 text-2xl font-bold`}
                 />
               </div>
+              {formError && <p className="mt-2 text-xs text-rose-300">⚠️ {formError}</p>}
 
               {/* หมวดหมู่ */}
               <div className="mt-3 flex flex-wrap gap-2">

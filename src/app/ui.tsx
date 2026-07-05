@@ -18,13 +18,14 @@ export const baht = (n: number) =>
 
 /* ── Number input helper ────────────────────────────────── */
 export function NumInput({
-  value, onChange, min = 0, className, placeholder,
+  value, onChange, min = 0, className, placeholder, ref,
 }: {
   value: number;
   onChange: (n: number) => void;
   min?: number;
   className?: string;
   placeholder?: string;
+  ref?: React.Ref<HTMLInputElement>;
 }) {
   const [raw, setRaw] = useState(value === 0 ? "" : String(value));
 
@@ -35,6 +36,7 @@ export function NumInput({
 
   return (
     <input
+      ref={ref}
       type="text"
       inputMode="numeric"
       pattern="[0-9]*"
